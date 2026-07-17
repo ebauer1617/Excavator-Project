@@ -14,7 +14,7 @@ int counter = 0;
 
 Adafruit_VL53L0X lox = Adafruit_VL53L0X();
 Adafruit_AS5600 as5600;
-Adafruit_AS5600 as5600_2;
+//Adafruit_AS5600 as5600_2;
 
 void setup() {
   Serial.begin(9600);

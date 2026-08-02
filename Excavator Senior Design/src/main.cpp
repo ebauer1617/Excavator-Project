@@ -8,16 +8,27 @@
 // VL53L0X is also behind the mux here rather than on the main bus).
 //
 // Channel assignment confirmed by scanning all 8 mux channels:
+<<<<<<< HEAD
 //   channel 0 -> VL53L0X  (0x29)
 //   channel 1 -> Encoder2 (0x36)
 //   channel ? -> Encoder1 (0x36, not yet confirmed on the mux)
+=======
+//   channel 0 -> Encoder1 (0x36)
+//   channel 1 -> Encoder2 (0x36)
+//   channel 2 -> VL53L0X  (0x29)
+>>>>>>> efe6038fe7aca72733d9e1c5e8dd2800fc605b94
 
 #define TCA9548A_ADDR 0x70
 #define AS5600_ADDR 0x36
 
 #define ENCODER1_CHANNEL 0
+<<<<<<< HEAD
 #define ENCODER2_CHANNEL 2
 #define TOF_CHANNEL 1
+=======
+#define ENCODER2_CHANNEL 1
+#define TOF_CHANNEL 2
+>>>>>>> efe6038fe7aca72733d9e1c5e8dd2800fc605b94
 
 #define AS5600_REG_STATUS 0x0B
 #define AS5600_REG_RAW_ANGLE 0x0C
@@ -36,6 +47,7 @@ void tcaSelect(uint8_t channel) {
   Wire.endTransmission();
 }
 
+<<<<<<< HEAD
 // Prints every address that ACKs on the currently-selected bus/channel.
 void scanI2C(const char *label) {
   Serial.print(label);
@@ -57,6 +69,8 @@ void scanI2C(const char *label) {
   Serial.println();
 }
 
+=======
+>>>>>>> efe6038fe7aca72733d9e1c5e8dd2800fc605b94
 bool as5600ReadRegister16(uint8_t reg, uint16_t &value) {
   Wire.beginTransmission(AS5600_ADDR);
   Wire.write(reg);
@@ -150,6 +164,7 @@ void setup() {
     delay(10);
 
   Wire.begin();
+<<<<<<< HEAD
   // Bound every I2C transaction so a stuck/missing device can't hang the
   // sketch forever -- resets the AVR TWI hardware on timeout.
   Wire.setWireTimeout(25000, true);
@@ -180,13 +195,27 @@ void setup() {
   Serial.println(F("# step: selecting TOF channel"));
   tcaSelect(TOF_CHANNEL);
   Serial.println(F("# step: calling lox.begin()"));
+=======
+
+  Serial.println(F("# I2C sensor test: 2x AS5600 + 1x VL53L0X, all via TCA9548A"));
+
+  Wire.beginTransmission(TCA9548A_ADDR);
+  if (Wire.endTransmission() != 0) {
+    Serial.println(F("# WARNING: TCA9548A mux not responding at 0x70"));
+  }
+
+  tcaSelect(TOF_CHANNEL);
+>>>>>>> efe6038fe7aca72733d9e1c5e8dd2800fc605b94
   if (lox.begin()) {
     vl53l0x_ok = true;
     Serial.println(F("# VL53L0X ready"));
   } else {
     Serial.println(F("# VL53L0X NOT FOUND -- check wiring"));
   }
+<<<<<<< HEAD
   Serial.println(F("# step: setup complete, entering loop"));
+=======
+>>>>>>> efe6038fe7aca72733d9e1c5e8dd2800fc605b94
 }
 
 void loop() {
@@ -196,4 +225,8 @@ void loop() {
   Serial.println();
 
   delay(500);
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> efe6038fe7aca72733d9e1c5e8dd2800fc605b94

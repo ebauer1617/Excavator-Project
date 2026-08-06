@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Excavator Arm telemetry</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #0E1317;
+    --panel: #151C22;
+    --rule: #232C35;
+    --ink: #E8EBEE;
+    --muted: #6E7A87;
+    --amber: #F2A93B;
+    --live: #4FB286;
+    --alert: #E2574C;
+    --mono: "JetBrains Mono", ui-monospace, monospace;
+    --disp: "Barlow Semi Condensed", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--disp);
+    display: flex;
+    flex-direction: column;
+  }
+  header {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--rule);
+  }
+  h1 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+  }
+  .subtitle { font-size: 13px; color: var(--muted); letter-spacing: 0.04em; }
+  .status {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+  }
+  #status-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--muted);
+  }
+  #status-dot[data-kind="live"]  { background: var(--live); box-shadow: 0 0 0 3px rgba(79,178,134,0.14); }
+  #status-dot[data-kind="stale"] { background: var(--amber); }
+  #status-dot[data-kind="down"]  { background: var(--alert); }
+
+  main { flex: 1; min-height: 0; padding: 8px 12px 0; }
+  #scene { width: 100%; height: 100%; display: block; }
+
+  .rail {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+    border-top: 1px solid var(--rule);
+    background: var(--panel);
+  }
+  .cell { padding: 10px 16px 12px; border-right: 1px solid var(--rule); }
+  .cell:last-child { border-right: none; }
+  .cell .label {
+    font-size: 11px;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .cell .value {
+    margin-top: 3px;
+    font-family: var(--mono);
+    font-size: 17px;
+    font-variant-numeric: tabular-nums;
+  }
+  .cell.accent .value { color: var(--amber); }
+  @media (max-width: 640px) { .cell .value { font-size: 15px; } }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Excavator Arm telemetry</h1>
+    <span class="subtitle">boom · stick · bucket</span>
+    <span class="status"><span id="status-dot"></span><span id="status-text">connecting</span></span>
+  </header>
+
+  <main><canvas id="scene"></canvas></main>
+
+  <div class="rail">
+    <div class="cell"><div class="label">Boom</div><div class="value" id="v-boom">—</div></div>
+    <div class="cell"><div class="label">Stick</div><div class="value" id="v-stick">—</div></div>
+    <div class="cell"><div class="label">Bucket</div><div class="value" id="v-bucket">—</div></div>
+    <div class="cell accent"><div class="label">Tip x</div><div class="value" id="v-tipx">—</div></div>
+    <div class="cell accent"><div class="label">Tip y</div><div class="value" id="v-tipy">—</div></div>
+    <div class="cell"><div class="label">Rate</div><div class="value" id="v-rate">—</div></div>
+    <div class="cell"><div class="label">Frame</div><div class="value" id="v-seq">—</div></div>
+    <div class="cell"><div class="label">Uptime</div><div class="value" id="v-uptime">—</div></div>
+  </div>
+
+  <script type="module" src="./js/client/main.js"></script>
+</body>
+</html>

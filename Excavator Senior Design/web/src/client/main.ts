@@ -259,7 +259,19 @@ function render(now: number): void {
 // ------------------------------------------------------------- frame loop
 
 const out: Record<string, HTMLElement> = {};
-for (const id of ['boom', 'stick', 'bucket', 'tipx', 'tipy', 'rate', 'uptime', 'seq']) {
+for (const id of [
+  'boom',
+  'boom-raw',
+  'stick',
+  'stick-raw',
+  'bucket',
+  'bucket-raw',
+  'tipx',
+  'tipy',
+  'rate',
+  'uptime',
+  'seq',
+]) {
   out[id] = document.getElementById(`v-${id}`)!;
 }
 
@@ -290,6 +302,9 @@ function frame(now: number): void {
     const stale = now - lastRxAt > STALE_MS;
 
     for (const j of JOINTS) out[j].textContent = `${shown[j].toFixed(1)}°`;
+    out['boom-raw'].textContent = lastState ? `${lastState.rawTofMm} mm` : '—';
+    out['stick-raw'].textContent = lastState ? String(lastState.rawEncoder1) : '—';
+    out['bucket-raw'].textContent = lastState ? String(lastState.rawEncoder2) : '—';
     out.tipx.textContent = `${tip.x.toFixed(2)} m`;
     out.tipy.textContent = `${tip.y.toFixed(2)} m`;
     out.rate.textContent = `${msgTimes.length} Hz`;

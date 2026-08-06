@@ -9,24 +9,39 @@ controller ──UART──> serialport ──> ReadlineParser ──> parseArmL
 browser canvas <── rAF + smoothing <── WebSocket <── 60 Hz timer <─────┘
 ```
 
+## Dependency Setup
+
+* install nodejs
+* install pnpm # can also use npm instead and adjust the commands below accordingly
+
 ## Quick start
 
-No hardware needed — the simulator synthesises 100 Hz frames:
+Run the server (sim):
 
 ```bash
-npm install
-npm run dev:sim
+pnpm install
+pnpm run dev:sim
 # http://localhost:8080
 ```
 
 With a real device:
 
 ```bash
-npm run ports                     # list attached serial ports
-npm run dev -- --port /dev/ttyUSB0 --baud 115200
+pnpm run ports                     # list attached serial ports
+pnpm run dev -- --port /dev/ttyUSB0 --baud 115200
 ```
 
 Flags: `--port`, `--baud`, `--http` (default 8080), `--render-hz` (default 60), `--sim`, `--list`.
+
+Then open a browser view:
+
+http://localhost:8080/
+
+Shutting down:
+
+`Ctrl + c`
+
+Make sure to close the browser session when shutting down the server.
 
 ## Wire format
 

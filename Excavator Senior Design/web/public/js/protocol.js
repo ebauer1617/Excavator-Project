@@ -62,8 +62,8 @@ const TOF_LINE = /^ToF:\s+distance_mm=(\d+)\s+status=(\d+)\s*$/;
  */
 export function createFrameDecoder() {
     const startedAt = Date.now();
-    let encoder1Deg = null;
-    let encoder2Deg = null;
+    let encoder1 = null;
+    let encoder2 = null;
     const tofWindow = [];
     return {
         line(raw) {
@@ -75,13 +75,14 @@ export function createFrameDecoder() {
                 const [, which, magnet, rawAngleStr] = m;
                 if (magnet !== 'YES')
                     return { frame: null, malformed: false }; // no magnet detected, reading isn't trustworthy
+                const rawAngle = Number(rawAngleStr);
                 const deg = which === '1'
-                    ? encoderToDeg(Number(rawAngleStr), ENCODER1_ZERO_OFFSET_DEG, ENCODER1_DIRECTION)
-                    : encoderToDeg(Number(rawAngleStr), ENCODER2_ZERO_OFFSET_DEG, ENCODER2_DIRECTION);
+                    ? encoderToDeg(rawAngle, ENCODER1_ZERO_OFFSET_DEG, ENCODER1_DIRECTION)
+                    : encoderToDeg(rawAngle, ENCODER2_ZERO_OFFSET_DEG, ENCODER2_DIRECTION);
                 if (which === '1')
-                    encoder1Deg = deg;
+                    encoder1 = { raw: rawAngle, deg };
                 else
-                    encoder2Deg = deg;
+                    encoder2 = { raw: rawAngle, deg };
                 return { frame: null, malformed: false };
             }
             if (!line.startsWith('ToF:'))
@@ -89,20 +90,24 @@ export function createFrameDecoder() {
             const tof = line.match(TOF_LINE);
             if (!tof)
                 return { frame: null, malformed: true };
-            if (encoder1Deg === null || encoder2Deg === null)
+            if (encoder1 === null || encoder2 === null)
                 return { frame: null, malformed: false }; // waiting on a first reading per encoder
             // The raw reading jitters a few mm frame to frame; smooth it over a
             // trailing window before converting, rather than feeding every noisy
             // sample straight into the boom angle.
-            tofWindow.push(Number(tof[1]));
+            const rawTofMm = Number(tof[1]);
+            tofWindow.push(rawTofMm);
             if (tofWindow.length > TOF_SMOOTHING_WINDOW)
                 tofWindow.shift();
             const smoothedDistanceMm = tofWindow.reduce((sum, v) => sum + v, 0) / tofWindow.length;
             const frame = {
                 t: Date.now() - startedAt,
                 boom: tofToBoomDeg(smoothedDistanceMm),
-                stick: encoder1Deg,
-                bucket: encoder2Deg,
+                stick: encoder1.deg,
+                bucket: encoder2.deg,
+                rawEncoder1: encoder1.raw,
+                rawEncoder2: encoder2.raw,
+                rawTofMm,
             };
             return { frame, malformed: false };
         },

@@ -25,6 +25,12 @@ export interface ArmFrame {
   boom: number;
   stick: number;
   bucket: number;
+  /** Raw AS5600 counts (0..4095) behind `stick`, before calibration. */
+  rawEncoder1: number;
+  /** Raw AS5600 counts (0..4095) behind `bucket`, before calibration. */
+  rawEncoder2: number;
+  /** Raw, unsmoothed ToF distance_mm behind `boom` — `boom` itself is derived from a smoothed rolling average, see TOF_SMOOTHING_WINDOW. */
+  rawTofMm: number;
 }
 
 /** What the bridge pushes to browsers. */
@@ -110,8 +116,8 @@ export interface DecodeResult {
  */
 export function createFrameDecoder() {
   const startedAt = Date.now();
-  let encoder1Deg: number | null = null;
-  let encoder2Deg: number | null = null;
+  let encoder1: { raw: number; deg: number } | null = null;
+  let encoder2: { raw: number; deg: number } | null = null;
   const tofWindow: number[] = [];
 
   return {
@@ -123,12 +129,13 @@ export function createFrameDecoder() {
         if (!m) return { frame: null, malformed: false }; // e.g. "NOT FOUND (check mux channel / wiring)"
         const [, which, magnet, rawAngleStr] = m;
         if (magnet !== 'YES') return { frame: null, malformed: false }; // no magnet detected, reading isn't trustworthy
+        const rawAngle = Number(rawAngleStr);
         const deg =
           which === '1'
-            ? encoderToDeg(Number(rawAngleStr), ENCODER1_ZERO_OFFSET_DEG, ENCODER1_DIRECTION)
-            : encoderToDeg(Number(rawAngleStr), ENCODER2_ZERO_OFFSET_DEG, ENCODER2_DIRECTION);
-        if (which === '1') encoder1Deg = deg;
-        else encoder2Deg = deg;
+            ? encoderToDeg(rawAngle, ENCODER1_ZERO_OFFSET_DEG, ENCODER1_DIRECTION)
+            : encoderToDeg(rawAngle, ENCODER2_ZERO_OFFSET_DEG, ENCODER2_DIRECTION);
+        if (which === '1') encoder1 = { raw: rawAngle, deg };
+        else encoder2 = { raw: rawAngle, deg };
         return { frame: null, malformed: false };
       }
 
@@ -136,20 +143,24 @@ export function createFrameDecoder() {
 
       const tof = line.match(TOF_LINE);
       if (!tof) return { frame: null, malformed: true };
-      if (encoder1Deg === null || encoder2Deg === null) return { frame: null, malformed: false }; // waiting on a first reading per encoder
+      if (encoder1 === null || encoder2 === null) return { frame: null, malformed: false }; // waiting on a first reading per encoder
 
       // The raw reading jitters a few mm frame to frame; smooth it over a
       // trailing window before converting, rather than feeding every noisy
       // sample straight into the boom angle.
-      tofWindow.push(Number(tof[1]));
+      const rawTofMm = Number(tof[1]);
+      tofWindow.push(rawTofMm);
       if (tofWindow.length > TOF_SMOOTHING_WINDOW) tofWindow.shift();
       const smoothedDistanceMm = tofWindow.reduce((sum, v) => sum + v, 0) / tofWindow.length;
 
       const frame: ArmFrame = {
         t: Date.now() - startedAt,
         boom: tofToBoomDeg(smoothedDistanceMm),
-        stick: encoder1Deg,
-        bucket: encoder2Deg,
+        stick: encoder1.deg,
+        bucket: encoder2.deg,
+        rawEncoder1: encoder1.raw,
+        rawEncoder2: encoder2.raw,
+        rawTofMm,
       };
       return { frame, malformed: false };
     },

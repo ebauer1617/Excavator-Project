@@ -17,6 +17,7 @@ import {
   STATS_LOG_INTERVAL_MS,
   HZ_MEASUREMENT_INTERVAL_MS,
   SIM_DEFAULT_HZ,
+  SHUTDOWN_FORCE_EXIT_MS,
 } from './constants.js';
 
 // ---------------------------------------------------------------- arguments
@@ -180,11 +181,33 @@ server.listen(HTTP_PORT, () => {
   console.log(`[http] http://localhost:${HTTP_PORT}`);
 });
 
-for (const sig of ['SIGINT', 'SIGTERM'] as const) {
-  process.on(sig, () => {
-    console.log('\nShutting down');
-    port?.isOpen && port.close();
-    wss.close();
-    server.close(() => process.exit(0));
+let shuttingDown = false;
+
+function shutdown(): void {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log('\nShutting down');
+
+  if (reconnectTimer) clearTimeout(reconnectTimer);
+  if (port?.isOpen) port.close();
+
+  // wss.close() alone only stops new connections — clients already connected
+  // (e.g. a browser tab left open) keep their sockets alive, which would
+  // otherwise block server.close()'s callback forever. Terminate them first.
+  for (const client of wss.clients) client.terminate();
+  wss.close();
+  server.closeAllConnections();
+
+  // Fallback in case some other open handle we didn't account for keeps the
+  // event loop alive — Ctrl+C should never hang no matter what.
+  const forceExit = setTimeout(() => process.exit(1), SHUTDOWN_FORCE_EXIT_MS);
+
+  server.close(() => {
+    clearTimeout(forceExit);
+    process.exit(0);
   });
+}
+
+for (const sig of ['SIGINT', 'SIGTERM'] as const) {
+  process.on(sig, shutdown);
 }

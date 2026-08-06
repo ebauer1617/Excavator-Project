@@ -3,7 +3,7 @@
  * Compiled twice (tsconfig.server.json / tsconfig.client.json) — keep it
  * dependency-free and free of any Node or DOM globals.
  */
-import { JOINTS, JOINT_LIMITS, LINK_LENGTHS, ENCODER_BITS, ENCODER1_ZERO_OFFSET_DEG, ENCODER2_ZERO_OFFSET_DEG, TOF_DISTANCE_MIN_MM, TOF_DISTANCE_MAX_MM, } from './constants.js';
+import { JOINT_LIMITS, LINK_LENGTHS, ENCODER_BITS, ENCODER1_ZERO_OFFSET_DEG, ENCODER2_ZERO_OFFSET_DEG, ENCODER1_DIRECTION, ENCODER2_DIRECTION, TOF_DISTANCE_MIN_MM, TOF_DISTANCE_MAX_MM, } from './constants.js';
 // -------------------------------------------------------------- unit convert
 /** Wraps a degree value into (-180, 180]. */
 function wrapDeg(deg) {
@@ -14,15 +14,21 @@ function wrapDeg(deg) {
         d -= 360;
     return d;
 }
-/** Converts a 12-bit AS5600 raw angle (0..4095) to a joint-relative degree, using that joint's mechanical-zero offset. */
-function encoderToDeg(rawAngle, zeroOffsetDeg) {
+/**
+ * Converts a 12-bit AS5600 raw angle (0..4095) to a joint-relative degree,
+ * using that joint's rotational sense (direction, ±1 — some encoders are
+ * mounted so raw_angle increases as the joint closes rather than opens) and
+ * mechanical-zero offset.
+ */
+function encoderToDeg(rawAngle, zeroOffsetDeg, direction) {
     const countsPerRev = 1 << ENCODER_BITS;
-    return wrapDeg((rawAngle / countsPerRev) * 360 - zeroOffsetDeg);
+    return wrapDeg(direction * (rawAngle / countsPerRev) * 360 - zeroOffsetDeg);
 }
 /** Inverse of encoderToDeg — a joint-relative degree back to a 12-bit raw_angle count. Used by the simulator. */
-function degToEncoderRaw(deg, zeroOffsetDeg) {
+function degToEncoderRaw(deg, zeroOffsetDeg, direction) {
     const countsPerRev = 1 << ENCODER_BITS;
-    const wrapped = (((deg + zeroOffsetDeg) % 360) + 360) % 360;
+    const rawDeg = direction * (deg + zeroOffsetDeg);
+    const wrapped = ((rawDeg % 360) + 360) % 360;
     return Math.round((wrapped / 360) * countsPerRev) % countsPerRev;
 }
 /** Converts the ToF distance to a boom angle by linear interpolation between the calibrated extension bounds. */
@@ -36,10 +42,6 @@ function boomDegToTof(deg) {
     const [lo, hi] = JOINT_LIMITS.boom;
     const frac = (deg - lo) / (hi - lo);
     return TOF_DISTANCE_MIN_MM + (TOF_DISTANCE_MAX_MM - TOF_DISTANCE_MIN_MM) * frac;
-}
-function inLimits(j, v) {
-    const [lo, hi] = JOINT_LIMITS[j];
-    return Number.isFinite(v) && v >= lo && v <= hi;
 }
 // ---------------------------------------------------------------- wire lines
 const ENCODER_LINE = /^Encoder([12]):\s+magnet=(YES|NO)\s+raw_angle=(\d+)\s+angle=(\d+)\s+agc=(\d+)\s+magnitude=(\d+)\s*$/;
@@ -73,8 +75,8 @@ export function createFrameDecoder() {
                 if (magnet !== 'YES')
                     return { frame: null, malformed: false }; // no magnet detected, reading isn't trustworthy
                 const deg = which === '1'
-                    ? encoderToDeg(Number(rawAngleStr), ENCODER1_ZERO_OFFSET_DEG)
-                    : encoderToDeg(Number(rawAngleStr), ENCODER2_ZERO_OFFSET_DEG);
+                    ? encoderToDeg(Number(rawAngleStr), ENCODER1_ZERO_OFFSET_DEG, ENCODER1_DIRECTION)
+                    : encoderToDeg(Number(rawAngleStr), ENCODER2_ZERO_OFFSET_DEG, ENCODER2_DIRECTION);
                 if (which === '1')
                     encoder1Deg = deg;
                 else
@@ -94,10 +96,6 @@ export function createFrameDecoder() {
                 stick: encoder1Deg,
                 bucket: encoder2Deg,
             };
-            for (const j of JOINTS) {
-                if (!inLimits(j, frame[j]))
-                    return { frame: null, malformed: true };
-            }
             return { frame, malformed: false };
         },
     };
@@ -108,8 +106,8 @@ export function createFrameDecoder() {
  * output, so the simulator exercises the exact wire format.
  */
 export function formatSensorLines(a) {
-    const e1 = degToEncoderRaw(a.stick, ENCODER1_ZERO_OFFSET_DEG);
-    const e2 = degToEncoderRaw(a.bucket, ENCODER2_ZERO_OFFSET_DEG);
+    const e1 = degToEncoderRaw(a.stick, ENCODER1_ZERO_OFFSET_DEG, ENCODER1_DIRECTION);
+    const e2 = degToEncoderRaw(a.bucket, ENCODER2_ZERO_OFFSET_DEG, ENCODER2_DIRECTION);
     const distanceMm = Math.round(boomDegToTof(a.boom));
     return [
         `Encoder1: magnet=YES raw_angle=${e1} angle=${e1} agc=253 magnitude=2053`,

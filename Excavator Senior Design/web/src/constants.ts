@@ -15,11 +15,22 @@ export const LINK_LENGTHS = {
   bucket: 1.5, // stick/bucket pin to bucket tip
 } as const;
 
-/** Mechanical stops, degrees. A decoded frame outside these is treated as corrupt. */
+/**
+ * Mechanical stops, degrees — sizes the client's rendered viewport to the
+ * arm's actual reachable envelope (frames are no longer rejected for
+ * falling outside these; see createFrameDecoder in protocol.ts).
+ */
 export const JOINT_LIMITS = {
   boom: [-20, 70], // relative to horizontal; boom foot pin is the coordinate origin
-  stick: [-160, -20], // relative to the boom
-  bucket: [-155, 15], // relative to the stick
+  // Bench-calibrated 2026-08: raw_angle=3358 (fully extended up) -> -20°
+  // (near-collinear with the boom, renders straight), raw_angle=405 (fully
+  // in) -> -120° (folded, renders curled). See ENCODER1_ZERO_OFFSET_DEG /
+  // ENCODER1_DIRECTION.
+  stick: [-120, -20], // relative to the boom
+  // Bench-calibrated 2026-08: raw_angle=2223 (fully extended, teeth
+  // colinear with the stick) -> 0°, raw_angle=1085 (fully curled in,
+  // teeth facing the machine) -> -100°.
+  bucket: [-100, 0], // relative to the stick
 } as const satisfies Record<JointName, readonly [number, number]>;
 
 /** Canonical joint order, used to iterate telemetry and rendering state. */
@@ -31,40 +42,59 @@ export const JOINTS: readonly JointName[] = ['boom', 'stick', 'bucket'];
 export const ENCODER_BITS = 12;
 
 /**
- * Encoder1 (stick) mechanical-zero calibration, degrees — subtracted from the
- * raw-angle-derived heading so the joint reads 0° at its true reference pose.
- * Placeholder until calibrated: with the stick held at a known reference
- * position (e.g. its mechanical stop), read the live raw_angle, convert it to
- * degrees (raw_angle * 360 / 4096), and set this constant to that value.
+ * Encoder1 (stick) rotational sense: +1 if raw_angle increases as the joint
+ * opens/extends, -1 if it increases as the joint closes/curls in. This
+ * encoder's mounting runs opposite to the bucket's — bench-calibration
+ * (2026-08) only fit the two known stops (raw 3358 -> extended, raw 405 ->
+ * fully in) to within ~0.3° once this was flipped to -1; +1 was off by
+ * ~100° in the wrong direction. Re-derive if the sensor is remounted.
  */
-export const ENCODER1_ZERO_OFFSET_DEG = 0;
+export const ENCODER1_DIRECTION = -1;
+
+/** Encoder2 (bucket) rotational sense — see ENCODER1_DIRECTION. This one matches the "raw increases as the joint opens" default. */
+export const ENCODER2_DIRECTION = 1;
 
 /**
- * Encoder2 (bucket) mechanical-zero calibration, degrees — same derivation as
- * ENCODER1_ZERO_OFFSET_DEG, taken with the bucket at its own reference pose.
+ * Encoder1 (stick) mechanical-zero calibration, degrees — subtracted after
+ * ENCODER1_DIRECTION is applied, so the joint reads 0° at its true reference
+ * pose. Bench-calibrated 2026-08 by averaging the offset implied by both
+ * stops: raw_angle=3358 (extended) should read -20° and raw_angle=405
+ * (fully in) should read -120° (see JOINT_LIMITS.stick); each lands within
+ * ~0.25° of that. Recalibrate the same way if the sensor is remounted: read
+ * raw_angle at a known stop, convert to degrees (raw_angle * 360 / 4096),
+ * apply ENCODER1_DIRECTION, and solve for the offset that matches that
+ * stop's JOINT_LIMITS value.
  */
-export const ENCODER2_ZERO_OFFSET_DEG = 0;
+export const ENCODER1_ZERO_OFFSET_DEG = 84.6;
 
 /**
- * ToF reading at the boom's lowest (fully down) position, mm. Placeholder
- * from a rough bench measurement; recalibrate by lowering the boom to its
+ * Encoder2 (bucket) mechanical-zero calibration, degrees — same derivation
+ * as ENCODER1_ZERO_OFFSET_DEG. Bench-calibrated 2026-08: raw_angle=2223
+ * (extended/colinear) -> 0°, raw_angle=1085 (fully in) -> -100° (see
+ * JOINT_LIMITS.bucket); each lands within ~0.01° of that.
+ */
+export const ENCODER2_ZERO_OFFSET_DEG = 195.4;
+
+/**
+ * ToF reading at the boom's lowest (fully down) position, mm.
+ * Bench-calibrated 2026-08; recalibrate by lowering the boom to its
  * mechanical stop and recording the ToF: distance_mm value from the serial
  * log at that position.
  */
-export const TOF_DISTANCE_MIN_MM = 64;
+export const TOF_DISTANCE_MIN_MM = 65;
 
 /**
  * ToF reading at the boom's highest (fully extended/up) position, mm.
- * Placeholder from a rough bench measurement; recalibrate by raising the
- * boom to its mechanical stop and recording the ToF: distance_mm value from
- * the serial log at that position.
+ * Bench-calibrated 2026-08; recalibrate by raising the boom to its
+ * mechanical stop and recording the ToF: distance_mm value from the serial
+ * log at that position.
  */
-export const TOF_DISTANCE_MAX_MM = 106;
+export const TOF_DISTANCE_MAX_MM = 105;
 
 // ---------------------------------------------------------- serial / network
 
 /** Fallback serial device path on Windows when --port isn't given. */
-export const DEFAULT_SERIAL_PATH_WIN32 = 'COM3';
+export const DEFAULT_SERIAL_PATH_WIN32 = 'COM5';
 /** Fallback serial device path on Linux/macOS when --port isn't given. */
 export const DEFAULT_SERIAL_PATH_POSIX = '/dev/ttyUSB0';
 /** Serial baud rate — must match the controller firmware's UART config. */
@@ -79,6 +109,8 @@ export const SERIAL_RECONNECT_DELAY_MS = 1000;
 export const STATS_LOG_INTERVAL_MS = 5000;
 /** Window over which incoming serial frame rate is measured, ms. */
 export const HZ_MEASUREMENT_INTERVAL_MS = 1000;
+/** How long graceful shutdown (Ctrl+C) waits for sockets to close before forcing exit. */
+export const SHUTDOWN_FORCE_EXIT_MS = 1000;
 
 // ------------------------------------------------------------- client render
 

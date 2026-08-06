@@ -3,7 +3,7 @@
  * Compiled twice (tsconfig.server.json / tsconfig.client.json) — keep it
  * dependency-free and free of any Node or DOM globals.
  */
-import { JOINT_LIMITS, LINK_LENGTHS, ENCODER_BITS, ENCODER1_ZERO_OFFSET_DEG, ENCODER2_ZERO_OFFSET_DEG, ENCODER1_DIRECTION, ENCODER2_DIRECTION, TOF_DISTANCE_MIN_MM, TOF_DISTANCE_MAX_MM, } from './constants.js';
+import { JOINT_LIMITS, LINK_LENGTHS, ENCODER_BITS, ENCODER1_ZERO_OFFSET_DEG, ENCODER2_ZERO_OFFSET_DEG, ENCODER1_DIRECTION, ENCODER2_DIRECTION, TOF_DISTANCE_MIN_MM, TOF_DISTANCE_MAX_MM, TOF_SMOOTHING_WINDOW, } from './constants.js';
 // -------------------------------------------------------------- unit convert
 /** Wraps a degree value into (-180, 180]. */
 function wrapDeg(deg) {
@@ -64,6 +64,7 @@ export function createFrameDecoder() {
     const startedAt = Date.now();
     let encoder1Deg = null;
     let encoder2Deg = null;
+    const tofWindow = [];
     return {
         line(raw) {
             const line = raw.trim();
@@ -90,9 +91,16 @@ export function createFrameDecoder() {
                 return { frame: null, malformed: true };
             if (encoder1Deg === null || encoder2Deg === null)
                 return { frame: null, malformed: false }; // waiting on a first reading per encoder
+            // The raw reading jitters a few mm frame to frame; smooth it over a
+            // trailing window before converting, rather than feeding every noisy
+            // sample straight into the boom angle.
+            tofWindow.push(Number(tof[1]));
+            if (tofWindow.length > TOF_SMOOTHING_WINDOW)
+                tofWindow.shift();
+            const smoothedDistanceMm = tofWindow.reduce((sum, v) => sum + v, 0) / tofWindow.length;
             const frame = {
                 t: Date.now() - startedAt,
-                boom: tofToBoomDeg(Number(tof[1])),
+                boom: tofToBoomDeg(smoothedDistanceMm),
                 stick: encoder1Deg,
                 bucket: encoder2Deg,
             };

@@ -13,6 +13,7 @@ import {
   ENCODER2_DIRECTION,
   TOF_DISTANCE_MIN_MM,
   TOF_DISTANCE_MAX_MM,
+  TOF_SMOOTHING_WINDOW,
 } from './constants.js';
 
 export type JointName = 'boom' | 'stick' | 'bucket';
@@ -111,6 +112,7 @@ export function createFrameDecoder() {
   const startedAt = Date.now();
   let encoder1Deg: number | null = null;
   let encoder2Deg: number | null = null;
+  const tofWindow: number[] = [];
 
   return {
     line(raw: string): DecodeResult {
@@ -136,9 +138,16 @@ export function createFrameDecoder() {
       if (!tof) return { frame: null, malformed: true };
       if (encoder1Deg === null || encoder2Deg === null) return { frame: null, malformed: false }; // waiting on a first reading per encoder
 
+      // The raw reading jitters a few mm frame to frame; smooth it over a
+      // trailing window before converting, rather than feeding every noisy
+      // sample straight into the boom angle.
+      tofWindow.push(Number(tof[1]));
+      if (tofWindow.length > TOF_SMOOTHING_WINDOW) tofWindow.shift();
+      const smoothedDistanceMm = tofWindow.reduce((sum, v) => sum + v, 0) / tofWindow.length;
+
       const frame: ArmFrame = {
         t: Date.now() - startedAt,
-        boom: tofToBoomDeg(Number(tof[1])),
+        boom: tofToBoomDeg(smoothedDistanceMm),
         stick: encoder1Deg,
         bucket: encoder2Deg,
       };

@@ -71,6 +71,8 @@ export const TOF_DISTANCE_MIN_MM = 65;
  * log at that position.
  */
 export const TOF_DISTANCE_MAX_MM = 105;
+/** Number of recent ToF distance_mm readings averaged together before converting to a boom angle — the raw reading jitters a few mm frame to frame, this smooths it out. */
+export const TOF_SMOOTHING_WINDOW = 10;
 // ---------------------------------------------------------- serial / network
 /** Fallback serial device path on Windows when --port isn't given. */
 export const DEFAULT_SERIAL_PATH_WIN32 = 'COM5';

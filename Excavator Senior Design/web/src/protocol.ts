@@ -4,14 +4,16 @@
  * dependency-free and free of any Node or DOM globals.
  */
 import {
-  JOINTS,
   JOINT_LIMITS,
   LINK_LENGTHS,
   ENCODER_BITS,
   ENCODER1_ZERO_OFFSET_DEG,
   ENCODER2_ZERO_OFFSET_DEG,
+  ENCODER1_DIRECTION,
+  ENCODER2_DIRECTION,
   TOF_DISTANCE_MIN_MM,
   TOF_DISTANCE_MAX_MM,
+  TOF_SMOOTHING_WINDOW,
 } from './constants.js';
 
 export type JointName = 'boom' | 'stick' | 'bucket';
@@ -47,16 +49,22 @@ function wrapDeg(deg: number): number {
   return d;
 }
 
-/** Converts a 12-bit AS5600 raw angle (0..4095) to a joint-relative degree, using that joint's mechanical-zero offset. */
-function encoderToDeg(rawAngle: number, zeroOffsetDeg: number): number {
+/**
+ * Converts a 12-bit AS5600 raw angle (0..4095) to a joint-relative degree,
+ * using that joint's rotational sense (direction, ±1 — some encoders are
+ * mounted so raw_angle increases as the joint closes rather than opens) and
+ * mechanical-zero offset.
+ */
+function encoderToDeg(rawAngle: number, zeroOffsetDeg: number, direction: 1 | -1): number {
   const countsPerRev = 1 << ENCODER_BITS;
-  return wrapDeg((rawAngle / countsPerRev) * 360 - zeroOffsetDeg);
+  return wrapDeg(direction * (rawAngle / countsPerRev) * 360 - zeroOffsetDeg);
 }
 
 /** Inverse of encoderToDeg — a joint-relative degree back to a 12-bit raw_angle count. Used by the simulator. */
-function degToEncoderRaw(deg: number, zeroOffsetDeg: number): number {
+function degToEncoderRaw(deg: number, zeroOffsetDeg: number, direction: 1 | -1): number {
   const countsPerRev = 1 << ENCODER_BITS;
-  const wrapped = (((deg + zeroOffsetDeg) % 360) + 360) % 360;
+  const rawDeg = direction * (deg + zeroOffsetDeg);
+  const wrapped = ((rawDeg % 360) + 360) % 360;
   return Math.round((wrapped / 360) * countsPerRev) % countsPerRev;
 }
 
@@ -74,20 +82,15 @@ function boomDegToTof(deg: number): number {
   return TOF_DISTANCE_MIN_MM + (TOF_DISTANCE_MAX_MM - TOF_DISTANCE_MIN_MM) * frac;
 }
 
-function inLimits(j: JointName, v: number): boolean {
-  const [lo, hi] = JOINT_LIMITS[j];
-  return Number.isFinite(v) && v >= lo && v <= hi;
-}
-
 // ---------------------------------------------------------------- wire lines
 
 const ENCODER_LINE = /^Encoder([12]):\s+magnet=(YES|NO)\s+raw_angle=(\d+)\s+angle=(\d+)\s+agc=(\d+)\s+magnitude=(\d+)\s*$/;
 const TOF_LINE = /^ToF:\s+distance_mm=(\d+)\s+status=(\d+)\s*$/;
 
 export interface DecodeResult {
-  /** A completed, in-range frame — null on every line that doesn't finish one. */
+  /** A completed frame — null on every line that doesn't finish one. Angles are passed through as decoded, uncalibrated readings included, so live data stays visible while ENCODER1_ZERO_OFFSET_DEG / ENCODER2_ZERO_OFFSET_DEG are still being tuned. */
   frame: ArmFrame | null;
-  /** True if this line looked like a sensor line but failed to parse or the frame it completed failed the joint-limit check. False for banner/scan lines, blank separators, and expected "NOT FOUND" lines — those are normal, not corruption. */
+  /** True if this line looked like a sensor line but failed to parse. False for banner/scan lines, blank separators, and expected "NOT FOUND" lines — those are normal, not corruption. */
   malformed: boolean;
 }
 
@@ -109,6 +112,7 @@ export function createFrameDecoder() {
   const startedAt = Date.now();
   let encoder1Deg: number | null = null;
   let encoder2Deg: number | null = null;
+  const tofWindow: number[] = [];
 
   return {
     line(raw: string): DecodeResult {
@@ -121,8 +125,8 @@ export function createFrameDecoder() {
         if (magnet !== 'YES') return { frame: null, malformed: false }; // no magnet detected, reading isn't trustworthy
         const deg =
           which === '1'
-            ? encoderToDeg(Number(rawAngleStr), ENCODER1_ZERO_OFFSET_DEG)
-            : encoderToDeg(Number(rawAngleStr), ENCODER2_ZERO_OFFSET_DEG);
+            ? encoderToDeg(Number(rawAngleStr), ENCODER1_ZERO_OFFSET_DEG, ENCODER1_DIRECTION)
+            : encoderToDeg(Number(rawAngleStr), ENCODER2_ZERO_OFFSET_DEG, ENCODER2_DIRECTION);
         if (which === '1') encoder1Deg = deg;
         else encoder2Deg = deg;
         return { frame: null, malformed: false };
@@ -134,15 +138,19 @@ export function createFrameDecoder() {
       if (!tof) return { frame: null, malformed: true };
       if (encoder1Deg === null || encoder2Deg === null) return { frame: null, malformed: false }; // waiting on a first reading per encoder
 
+      // The raw reading jitters a few mm frame to frame; smooth it over a
+      // trailing window before converting, rather than feeding every noisy
+      // sample straight into the boom angle.
+      tofWindow.push(Number(tof[1]));
+      if (tofWindow.length > TOF_SMOOTHING_WINDOW) tofWindow.shift();
+      const smoothedDistanceMm = tofWindow.reduce((sum, v) => sum + v, 0) / tofWindow.length;
+
       const frame: ArmFrame = {
         t: Date.now() - startedAt,
-        boom: tofToBoomDeg(Number(tof[1])),
+        boom: tofToBoomDeg(smoothedDistanceMm),
         stick: encoder1Deg,
         bucket: encoder2Deg,
       };
-      for (const j of JOINTS) {
-        if (!inLimits(j, frame[j])) return { frame: null, malformed: true };
-      }
       return { frame, malformed: false };
     },
   };
@@ -154,8 +162,8 @@ export function createFrameDecoder() {
  * output, so the simulator exercises the exact wire format.
  */
 export function formatSensorLines(a: Record<JointName, number>): string[] {
-  const e1 = degToEncoderRaw(a.stick, ENCODER1_ZERO_OFFSET_DEG);
-  const e2 = degToEncoderRaw(a.bucket, ENCODER2_ZERO_OFFSET_DEG);
+  const e1 = degToEncoderRaw(a.stick, ENCODER1_ZERO_OFFSET_DEG, ENCODER1_DIRECTION);
+  const e2 = degToEncoderRaw(a.bucket, ENCODER2_ZERO_OFFSET_DEG, ENCODER2_DIRECTION);
   const distanceMm = Math.round(boomDegToTof(a.boom));
   return [
     `Encoder1: magnet=YES raw_angle=${e1} angle=${e1} agc=253 magnitude=2053`,

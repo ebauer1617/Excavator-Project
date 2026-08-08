@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Excavator Dashboard
+Comment=Start the telemetry server and open the live dashboard
+Exec="/home/excavator/Project Files/Excavator-Project/Excavator Senior Design/web/scripts/launch.sh"
+Icon=/home/excavator/Project Files/Excavator-Project/Excavator Senior Design/web/scripts/assets/excavator-icon.jpg
+Terminal=true
+Categories=Utility;

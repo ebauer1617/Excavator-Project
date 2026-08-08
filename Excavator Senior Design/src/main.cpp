@@ -8,16 +8,16 @@
 // VL53L0X is also behind the mux here rather than on the main bus).
 //
 // Channel assignment confirmed by scanning all 8 mux channels:
-//   channel 0 -> VL53L0X  (0x29)
-//   channel 1 -> Encoder2 (0x36)
-//   channel ? -> Encoder1 (0x36, not yet confirmed on the mux)
+//   channel 0 -> Encoder1 (0x36)
+//   channel 1 -> VL53L0X  (0x29)
+//   channel 2 -> Encoder2 (0x36, not yet found on the mux)
 
 #define TCA9548A_ADDR 0x70
 #define AS5600_ADDR 0x36
 
-#define ENCODER1_CHANNEL 0
+#define ENCODER1_CHANNEL 1
 #define ENCODER2_CHANNEL 2
-#define TOF_CHANNEL 1
+#define TOF_CHANNEL 0
 
 #define AS5600_REG_STATUS 0x0B
 #define AS5600_REG_RAW_ANGLE 0x0C
@@ -195,5 +195,5 @@ void loop() {
   printToF();
   Serial.println();
 
-  delay(500);
+  delay(250);
 }

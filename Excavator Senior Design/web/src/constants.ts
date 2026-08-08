@@ -99,7 +99,7 @@ export const TOF_SMOOTHING_WINDOW = 10;
 /** Fallback serial device path on Windows when --port isn't given. */
 export const DEFAULT_SERIAL_PATH_WIN32 = 'COM5';
 /** Fallback serial device path on Linux/macOS when --port isn't given. */
-export const DEFAULT_SERIAL_PATH_POSIX = '/dev/ttyUSB0';
+export const DEFAULT_SERIAL_PATH_POSIX = '/dev/ttyACM0';
 /** Serial baud rate — must match the controller firmware's UART config. */
 export const DEFAULT_BAUD_RATE = 115200;
 /** Port the HTTP server (and the WebSocket server riding on it) listens on. */
